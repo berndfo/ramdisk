@@ -6,7 +6,6 @@ import (
 	"os"
 	"io/ioutil"
 	"log"
-	"time"
 )
 
 func init() {
@@ -60,7 +59,7 @@ func TestWriteMultiple(t *testing.T) {
 	}
 
 	if writtenBytes != 8 {
-		t.Fatal("not written 8 byte")
+		t.Fatal("not written 8 bytes")
 	}
 	writer.Close()
 
@@ -94,19 +93,20 @@ func TestReadMultiwrite(t *testing.T) {
 		t.Fatal("no stat on written file")
 	}
 
-	time.Sleep(10 * time.Millisecond)
-
-	reader, err := os.OpenFile(mnt.Dir + "/" + "a.text", os.O_RDONLY, 0)
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a.txt", os.O_RDONLY, 0)
 	if err != nil {
 		t.Fatal("not opened, " + err.Error())
 	}
+	defer reader.Close()
 
 	byts, err := ioutil.ReadAll(reader)
 	if err != nil {
 		t.Fatal("not read")
 	}
 
-	if string(byts) != "testtesttestaaaabbbb" {
+	bytsToString := string(byts)
+	log.Printf("read: %q", bytsToString)
+	if bytsToString != "testtesttestaaaabbbb" {
 		t.Fail()
 	}
 
