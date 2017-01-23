@@ -16,7 +16,7 @@ func TestWriteOnce(t *testing.T) {
 	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
 	defer mnt.Close()
 
-	writer, createErr := os.Create(mnt.Dir + "/" + "a.txt")
+	writer, createErr := os.Create(mnt.Dir + "/" + "a1.txt")
 	writtenBytes, writeErr:= writer.WriteString("testtesttest")
 	defer writer.Close()
 
@@ -31,7 +31,7 @@ func TestWriteOnce(t *testing.T) {
 	writer.Close()
 	log.Print("file closed.")
 
-	fileInfo, errStat := os.Stat(mnt.Dir + "/" + "a.txt")
+	fileInfo, errStat := os.Stat(mnt.Dir + "/" + "a1.txt")
 	if errStat != nil {
 		t.Fatal("no stat on written file")
 	}
@@ -45,7 +45,7 @@ func TestWriteMultiple(t *testing.T) {
 	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
 	defer mnt.Close()
 
-	writer, createErr := os.Create(mnt.Dir + "/" + "a.txt")
+	writer, createErr := os.Create(mnt.Dir + "/" + "a2.txt")
 	defer writer.Close()
 
 	_, writeErr1 := writer.WriteString("testtesttest")
@@ -63,7 +63,7 @@ func TestWriteMultiple(t *testing.T) {
 	}
 	writer.Close()
 
-	fileInfo, errStat := os.Stat(mnt.Dir + "/" + "a.txt")
+	fileInfo, errStat := os.Stat(mnt.Dir + "/" + "a2.txt")
 	if errStat != nil {
 		t.Fatal("no stat on written file")
 	}
@@ -76,7 +76,7 @@ func TestReadMultiwrite(t *testing.T) {
 	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
 	defer mnt.Close()
 
-	writer, createErr := os.Create(mnt.Dir + "/" + "a.txt")
+	writer, createErr := os.Create(mnt.Dir + "/" + "a3.txt")
 	defer writer.Close()
 
 	_, writeErr1 := writer.WriteString("testtesttest")
@@ -88,12 +88,12 @@ func TestReadMultiwrite(t *testing.T) {
 
 	writer.Close()
 
-	_, errStat := os.Stat(mnt.Dir + "/" + "a.txt")
+	_, errStat := os.Stat(mnt.Dir + "/" + "a3.txt")
 	if errStat != nil {
 		t.Fatal("no stat on written file")
 	}
 
-	reader, err := os.OpenFile(mnt.Dir + "/" + "a.txt", os.O_RDONLY, 0)
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a3.txt", os.O_RDONLY, 0)
 	if err != nil {
 		t.Fatal("not opened, " + err.Error())
 	}
