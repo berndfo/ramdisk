@@ -114,5 +114,130 @@ func TestReadMultiwrite(t *testing.T) {
 		t.Fail()
 	}
 
+
 }
 
+func TestRandomRead(t *testing.T) {
+	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
+	defer mnt.Close()
+
+	writer, createErr := os.Create(mnt.Dir + "/" + "a4.txt")
+	defer writer.Close()
+
+	_, writeErr1 := writer.WriteString("testabctest")
+
+	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+		t.Fail()
+	}
+
+	writer.Close()
+
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a4.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal("not opened, " + err.Error())
+	}
+	defer reader.Close()
+
+	threeBytes := make([]byte, 3)
+	readCount, errRead := reader.ReadAt(threeBytes, 4)
+	if errRead != nil {
+		t.Fatal("not read")
+	}
+	if readCount != 3 {
+		t.Fatalf("instad of 3, read %d", readCount)
+	}
+
+	bytsToString := string(threeBytes)
+	log.Printf("read: %q", bytsToString)
+	if bytsToString != "abc" {
+		t.Fail()
+	}
+}
+
+func TestRandomReadIncomplete(t *testing.T) {
+	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
+	defer mnt.Close()
+
+	writer, createErr := os.Create(mnt.Dir + "/" + "a5.txt")
+	defer writer.Close()
+
+	_, writeErr1 := writer.WriteString("testtestab")
+
+	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+		t.Fail()
+	}
+
+	writer.Close()
+
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a5.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal("not opened, " + err.Error())
+	}
+	defer reader.Close()
+
+	threeBytes := make([]byte, 3)
+	readCount, errRead := reader.ReadAt(threeBytes, 8) // only 2 bytes left in file
+	if errRead != nil {
+		t.Fatal("not read")
+	}
+	if readCount != 3 {
+		t.Fatalf("instad of 3, read %d", readCount)
+	}
+
+	bytsToString := string(threeBytes)
+	log.Printf("read: %q", bytsToString)
+	if bytsToString != "ab" {
+		t.Fail()
+	}
+}
+
+func TestRandomSeek(t *testing.T) {
+	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
+	defer mnt.Close()
+
+	writer, createErr := os.Create(mnt.Dir + "/" + "a6.txt")
+	defer writer.Close()
+
+	_, writeErr1 := writer.WriteString("testabatesttesttbabesttesttesttestcbctest")
+
+	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+		t.Fail()
+	}
+
+	writer.Close()
+
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a6.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal("not opened, " + err.Error())
+	}
+	defer reader.Close()
+
+	threeBytes := make([]byte, 3)
+
+	reader.Seek(4, 0) // seek from start
+	_, _ = reader.Read(threeBytes)
+	if "aba" != string(threeBytes) {
+		t.Fatal("not seeked to pos 4")
+	}
+
+	reader.Seek(16, 0)
+	_, _ = reader.Read(threeBytes)
+	if "bab" != string(threeBytes) {
+		t.Fatal("not seeked to pos 16")
+	}
+
+	threeBytes = []byte("___") // neutralizes
+
+/*	reader.Seek(7, 2) // seek from end
+	_, _ = reader.Read(threeBytes)
+	if "cbc" != string(threeBytes) {
+		t.Fatal("not seeked to pos 16")
+	}*/
+
+	reader.Seek(10, 0) // seek from start...
+	reader.Seek(6, 1) // ... then seek relative
+	_, _ = reader.Read(threeBytes)
+	if "bab" != string(threeBytes) {
+		t.Fatal("not seeked to pos 10+6")
+	}
+}
