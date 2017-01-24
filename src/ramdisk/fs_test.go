@@ -6,6 +6,7 @@ import (
 	"os"
 	"io/ioutil"
 	"log"
+	"io"
 )
 
 func init() {
@@ -163,7 +164,7 @@ func TestRandomReadIncomplete(t *testing.T) {
 
 	_, writeErr1 := writer.WriteString("testtestab")
 
-	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil {
 		t.Fail()
 	}
 
@@ -177,14 +178,14 @@ func TestRandomReadIncomplete(t *testing.T) {
 
 	threeBytes := make([]byte, 3)
 	readCount, errRead := reader.ReadAt(threeBytes, 8) // only 2 bytes left in file
-	if errRead != nil {
-		t.Fatal("not read")
+	if errRead != io.EOF {
+		t.Fatal("not EOF", errRead.Error())
 	}
-	if readCount != 3 {
+	if readCount != 2 {
 		t.Fatalf("instad of 3, read %d", readCount)
 	}
 
-	bytsToString := string(threeBytes)
+	bytsToString := string(threeBytes[:readCount])
 	log.Printf("read: %q", bytsToString)
 	if bytsToString != "ab" {
 		t.Fail()
@@ -228,11 +229,14 @@ func TestRandomSeek(t *testing.T) {
 
 	threeBytes = []byte("___") // neutralizes
 
-/*	reader.Seek(7, 2) // seek from end
-	_, _ = reader.Read(threeBytes)
+	reader.Seek(-7, 2) // seek 7 backwards from end
+	actuallyRead, seekErr := reader.Read(threeBytes)
+	if seekErr != nil {
+		t.Fatal(seekErr.Error())
+	}
 	if "cbc" != string(threeBytes) {
-		t.Fatal("not seeked to pos 16")
-	}*/
+		t.Fatalf("not seeked to pos 16: %d %q", actuallyRead, threeBytes)
+	}
 
 	reader.Seek(10, 0) // seek from start...
 	reader.Seek(6, 1) // ... then seek relative
