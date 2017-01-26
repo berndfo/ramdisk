@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"log"
 	"bazil.org/fuse/fuseutil"
 	"sync"
 )
@@ -104,7 +103,6 @@ type RamFile struct {
 }
 
 func (f *RamFile) Attr(ctx context.Context, a *fuse.Attr) error {
-	log.Printf("attr for inode %d, %q, size: %d", f.inode, f.name, f.size)
 	a.Inode = f.inode
 	if f.writable {
 		a.Mode = 0666
@@ -141,8 +139,6 @@ type Handle struct {
 }
 
 func (h Handle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	log.Printf("try to read %s, offset=%d, size=%d", req.ID, req.Offset, req.Size)
-
 	entry, found := findEntryByInode(h.inode)
 	if !found {
 		return fuse.Errno(syscall.ENOENT)
@@ -165,18 +161,28 @@ func (h Handle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wr
 		return fuse.Errno(syscall.ENOENT)
 	}
 
-	currentDataLengthInt64 := int64(len(entry.data))
-	if (currentDataLengthInt64 == req.Offset) {
+	currentDataLength := len(entry.data)
+	offsetPos := int(req.Offset)
+	if (offsetPos == currentDataLength) {
 		// new data is added at the end
 		entry.data = append(entry.data, newBytes...)
-		entry.file.size = uint64(len(entry.data))
-	} else if (currentDataLengthInt64 > req.Offset) {
+	} else if (offsetPos < currentDataLength) {
 		// data is partially overwritten
-		endPos := int(req.Offset) + len(newBytes)
-		copy(entry.data[req.Offset:endPos], newBytes[:])
+		endPos := int(offsetPos) + len(newBytes)
+		if (endPos > currentDataLength) {
+			missingBytes := endPos - currentDataLength
+			// extend slice by missing byte count
+			entry.data = append(entry.data, make([]byte, missingBytes)...)
+		}
+		copy(entry.data[offsetPos:endPos], newBytes[:])
 	} else {
-		log.Println("WARN: unsupported: offset > buffer length")
+		// offset is beyond last byte
+		newEndPos := int(offsetPos) + len(newBytes)
+		missingBytes := newEndPos - currentDataLength
+		entry.data = append(entry.data, make([]byte, missingBytes)...)
+		copy(entry.data[offsetPos:newEndPos], newBytes[:])
 	}
+	entry.file.size = uint64(len(entry.data))
 
 	entry.file.modified = time.Now()
 	resp.Size = len(newBytes)
@@ -230,7 +236,6 @@ type FileEntry struct {
 
 func createFileEntry(name string, fs *ramdiskFS) (entry *FileEntry) {
 	inode := nextInode()
-	log.Printf("creating new file entry with inode = %d", inode)
 	emptyContent := make([]byte, 0)
 	entry = &FileEntry{
 		fs: fs,

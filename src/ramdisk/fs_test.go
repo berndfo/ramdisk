@@ -283,3 +283,101 @@ func TestRandomWrite(t *testing.T) {
 	}
 }
 
+func TestOverwriteBeyondEnd(t *testing.T) {
+	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
+	defer mnt.Close()
+
+	writer, createErr := os.Create(mnt.Dir + "/" + "a8.txt")
+	defer writer.Close()
+
+	_, writeErr1 := writer.WriteString("abcdefghijklmnopqrstuvwxyz")
+
+	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+		t.Fail()
+	}
+
+	writer.Seek(-2, 2)
+
+	_, writeErr2 := writer.WriteString("test")
+	if (writeErr2 != nil) {
+		t.Fail()
+	}
+
+	writer.Close()
+
+	fileInfo, errStat := os.Stat(mnt.Dir + "/" + "a8.txt")
+	if errStat != nil {
+		t.Fatal("no stat on written file")
+	}
+	if fileInfo.Size() != 26+2 {
+		t.Fatal("file not expanded by 2 bytes")
+	}
+
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a8.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal("not opened, " + err.Error())
+	}
+	defer reader.Close()
+
+	fourBytes := make([]byte, 4)
+
+	reader.Seek(24, 0) // seek from start
+	_, _ = reader.Read(fourBytes)
+	if "test" != string(fourBytes) {
+		t.Fatal("not overwritten")
+	}
+}
+
+func TestWriteAtPositionAfterEnd(t *testing.T) {
+	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
+	defer mnt.Close()
+
+	writer, createErr := os.Create(mnt.Dir + "/" + "a9.txt")
+	defer writer.Close()
+
+	_, writeErr1 := writer.WriteString("abcdefghijklmnopqrstuvwxyz")
+
+	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+		t.Fail()
+	}
+
+	writer.Seek(3, 2)
+
+	_, writeErr2 := writer.WriteString("test")
+	if (writeErr2 != nil) {
+		t.Fail()
+	}
+
+	writer.Close()
+
+	fileInfo, errStat := os.Stat(mnt.Dir + "/" + "a9.txt")
+	if errStat != nil {
+		t.Fatal("no stat on written file")
+	}
+	if fileInfo.Size() != 26+3+4 {
+		t.Fatalf("file not expanded by 7 bytes: %d", fileInfo.Size())
+	}
+
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a9.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal("not opened, " + err.Error())
+	}
+	defer reader.Close()
+
+	fourBytes := make([]byte, 4)
+
+	reader.Seek(-4, 2) // seek from end
+	_, _ = reader.Read(fourBytes)
+	if "test" != string(fourBytes) {
+		t.Fatal("not overwritten")
+	}
+
+	reader.Seek(-8, 2) // seek from end
+	eightBytes := make([]byte, 8)
+	_, _ = reader.Read(eightBytes)
+
+	if "z\000\000\000test" != string(eightBytes) {
+		t.Fatal("not overwritten")
+	}
+}
+
