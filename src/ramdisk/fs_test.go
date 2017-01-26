@@ -245,3 +245,41 @@ func TestRandomSeek(t *testing.T) {
 		t.Fatal("not seeked to pos 10+6")
 	}
 }
+
+func TestRandomWrite(t *testing.T) {
+	mnt, mntErr := fstestutil.MountedT(t, CreateRamFS(), nil)
+	defer mnt.Close()
+
+	writer, createErr := os.Create(mnt.Dir + "/" + "a7.txt")
+	defer writer.Close()
+
+	_, writeErr1 := writer.WriteString("abcdefghijklmnopqrstuvwxyz")
+
+	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+		t.Fail()
+	}
+
+	writer.Seek(7, 0)
+
+	_, writeErr2 := writer.WriteString("test")
+	if (writeErr2 != nil) {
+		t.Fail()
+	}
+
+	writer.Close()
+
+	reader, err := os.OpenFile(mnt.Dir + "/" + "a7.txt", os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal("not opened, " + err.Error())
+	}
+	defer reader.Close()
+
+	threeBytes := make([]byte, 3)
+
+	reader.Seek(7, 0) // seek from start
+	_, _ = reader.Read(threeBytes)
+	if "tes" != string(threeBytes) {
+		t.Fatal("not overwritten")
+	}
+}
+

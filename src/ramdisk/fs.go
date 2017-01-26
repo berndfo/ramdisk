@@ -164,8 +164,20 @@ func (h Handle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wr
 	if !found {
 		return fuse.Errno(syscall.ENOENT)
 	}
-	entry.data = append(entry.data, newBytes...)
-	entry.file.size = uint64(len(entry.data))
+
+	currentDataLengthInt64 := int64(len(entry.data))
+	if (currentDataLengthInt64 == req.Offset) {
+		// new data is added at the end
+		entry.data = append(entry.data, newBytes...)
+		entry.file.size = uint64(len(entry.data))
+	} else if (currentDataLengthInt64 > req.Offset) {
+		// data is partially overwritten
+		endPos := int(req.Offset) + len(newBytes)
+		copy(entry.data[req.Offset:endPos], newBytes[:])
+	} else {
+		log.Println("WARN: unsupported: offset > buffer length")
+	}
+
 	entry.file.modified = time.Now()
 	resp.Size = len(newBytes)
 	//log.Printf("write: added: %d, new total: %d", resp.Size, entry.file.size)
