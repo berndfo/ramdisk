@@ -36,14 +36,16 @@ func NewFSEvents() (fsevents FSEvents) {
 
 	go func(fsevents FSEvents) {
 		for {
+			var event interface{}
 			select {
-			case <-fsevents.FileCreated:
-			case <-fsevents.FileOpened:
-			case <-fsevents.FileWritten:
-			case <-fsevents.FileClosed:
-			case <-fsevents.Unmount:
-				return
+			case event = <-fsevents.FileCreated:
+			case event = <-fsevents.FileOpened:
+			case event = <-fsevents.FileWritten:
+			case event = <-fsevents.FileClosed:
+			case event = <-fsevents.Unmount:
 			}
+			_ = event
+			//log.Printf("FS event received: %T", event)
 		}
 		return
 	} (fsevents)

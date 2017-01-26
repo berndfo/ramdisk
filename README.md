@@ -50,3 +50,5 @@ or
 // in Go code
 fuse.Unmount(mountpoint)
 ```
+
+TODO: how to track changes to FS

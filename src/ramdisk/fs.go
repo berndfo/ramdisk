@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 	"log"
-	"encoding/hex"
 	"bazil.org/fuse/fuseutil"
 	"sync"
 )
@@ -126,7 +125,6 @@ func (f *RamFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.Op
 
 	entry, found := findEntryByInode(f.inode)
 	if !found {
-		log.Printf("inode not found: %d", f.inode)
 		return nil, fuse.Errno(syscall.ENOENT)
 	}
 
@@ -145,22 +143,18 @@ type Handle struct {
 func (h Handle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	log.Printf("try to read %s, offset=%d, size=%d", req.ID, req.Offset, req.Size)
 
-
 	entry, found := findEntryByInode(h.inode)
 	if !found {
-		log.Printf("inode not found: %d", h.inode)
 		return fuse.Errno(syscall.ENOENT)
 	}
 
 	fuseutil.HandleRead(req, resp, entry.data)
 
-	log.Printf("read: %s", hex.Dump(resp.Data))
-
 	return nil
 }
 
 func (h Handle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
-	log.Printf("try to write %s", req.ID)
+	//log.Printf("try to write %s", req.ID)
 	//n, err := w.buf.Write(req.Data)
 	newBytes := req.Data
 
@@ -168,21 +162,31 @@ func (h Handle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wr
 
 	entry, found := findEntryByInode(inode)
 	if !found {
-		log.Printf("inode not found: %d", inode)
 		return fuse.Errno(syscall.ENOENT)
 	}
-	log.Printf("inode found: %d", inode)
 	entry.data = append(entry.data, newBytes...)
 	entry.file.size = uint64(len(entry.data))
 	entry.file.modified = time.Now()
 	resp.Size = len(newBytes)
-	log.Printf("write: added: %d, new total: %d", resp.Size, entry.file.size)
-	log.Printf("write check: len data: %d, data: %q", len(entry.data), hex.Dump(entry.data))
+	//log.Printf("write: added: %d, new total: %d", resp.Size, entry.file.size)
 
 	entry.fs.Events.FileWritten<-EventFileWritten{}
 
 	return nil
 }
+
+func (h Handle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
+	inode := h.inode
+
+	entry, found := findEntryByInode(inode)
+	if !found {
+		return fuse.Errno(syscall.ENOENT)
+	}
+	entry.fs.Events.FileClosed<-EventFileClosed{}
+
+	return nil
+}
+
 
 var rootEntries = []*FileEntry{
 }
