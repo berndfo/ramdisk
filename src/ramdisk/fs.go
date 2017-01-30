@@ -39,7 +39,6 @@ func CreateRamFS() *ramdiskFS {
 			case event = <-fsevents.Unmount:
 			}
 			_ = event
-			log.Printf("FS event received: %T", event)
 			eventQueueMutex.Lock()
 			eventQueue = append(eventQueue, event)
 			eventQueueMutex.Unlock()
@@ -74,7 +73,6 @@ func CreateRamFS() *ramdiskFS {
 				for _, listener := range listenerEvents {
 					switch event.(type) {
 					case EventFileCreated:
-						log.Println("FS created event proc.")
 						listener.FileCreated <- event.(EventFileCreated)
 					case EventFileOpened:
 						listener.FileOpened <- event.(EventFileOpened)
@@ -100,6 +98,38 @@ func CreateRamFS() *ramdiskFS {
 	return filesys
 }
 
+func MountAndServe(mountpoint string, optionalListener *FSEvents) error {
+	c, err := fuse.Mount(mountpoint)
+	if err != nil {
+		log.Printf("failed to MountAndServe %q", mountpoint)
+		return err
+	}
+	log.Printf("successfully mounted %q", mountpoint)
+
+	defer c.Close()
+
+	filesys := CreateRamFS()
+
+	if optionalListener != nil {
+		filesys.AddListener(optionalListener)
+	}
+
+	if err := fs.Serve(c, filesys); err != nil {
+		log.Printf("failed to serve  a filesystem at MountAndServe %q", mountpoint)
+		return err
+	}
+
+	// check if the MountAndServe process has an error to report
+	<-c.Ready
+	if err := c.MountError; err != nil {
+		log.Printf("failure mounting a filesystem at MountAndServe %q", mountpoint)
+		return err
+	}
+
+	//fuse.Unmount(mountpoint)
+
+	return nil
+}
 func nextInode() uint64 {
 	return atomic.AddUint64(&atomicInode, 1)
 }
@@ -132,7 +162,7 @@ func (d *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	if !found {
 		return nil, fuse.ENOENT
 	}
-	return &entry.file, nil
+	return &entry.Meta, nil
 }
 
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
@@ -168,11 +198,11 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	rootEntries = append(rootEntries, newEntry)
 	d.mutex.Unlock()
 
-	handle := Handle{inode: newEntry.file.inode}
+	handle := Handle{inode: newEntry.Meta.inode}
 
 	d.fs.backendEvents.FileCreated<-EventFileCreated{FSEvent{File: newEntry}}
 
-	return &newEntry.file, handle, nil
+	return &newEntry.Meta, handle, nil
 }
 
 // implements fs.Node
@@ -217,6 +247,18 @@ func (f *RamFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.Op
 	return handle, nil
 }
 
+func (f *RamFile) Inode() uint64 {
+	return f.inode
+}
+
+func (f *RamFile) Name() string {
+	return f.name
+}
+
+func (f *RamFile) Size() uint64 {
+	return f.size
+}
+
 // implements fs.Handle, fs.HandleWriter, fs.HandleReader
 type Handle struct {
 	inode   uint64
@@ -228,9 +270,9 @@ func (h Handle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Read
 		return fuse.Errno(syscall.ENOENT)
 	}
 
-	fuseutil.HandleRead(req, resp, entry.data)
+	fuseutil.HandleRead(req, resp, entry.Data)
 
-	entry.fs.backendEvents.FileRead <-EventFileRead{}
+	entry.fs.backendEvents.FileRead <-EventFileRead{FSEvent{File: entry}}
 
 	return nil
 }
@@ -247,34 +289,34 @@ func (h Handle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wr
 		return fuse.Errno(syscall.ENOENT)
 	}
 
-	currentDataLength := len(entry.data)
+	currentDataLength := len(entry.Data)
 	offsetPos := int(req.Offset)
 	if (offsetPos == currentDataLength) {
 		// new data is added at the end
-		entry.data = append(entry.data, newBytes...)
+		entry.Data = append(entry.Data, newBytes...)
 	} else if (offsetPos < currentDataLength) {
 		// data is partially overwritten
 		endPos := int(offsetPos) + len(newBytes)
 		if (endPos > currentDataLength) {
 			missingBytes := endPos - currentDataLength
 			// extend slice by missing byte count
-			entry.data = append(entry.data, make([]byte, missingBytes)...)
+			entry.Data = append(entry.Data, make([]byte, missingBytes)...)
 		}
-		copy(entry.data[offsetPos:endPos], newBytes[:])
+		copy(entry.Data[offsetPos:endPos], newBytes[:])
 	} else {
 		// offset is beyond last byte
 		newEndPos := int(offsetPos) + len(newBytes)
 		missingBytes := newEndPos - currentDataLength
-		entry.data = append(entry.data, make([]byte, missingBytes)...)
-		copy(entry.data[offsetPos:newEndPos], newBytes[:])
+		entry.Data = append(entry.Data, make([]byte, missingBytes)...)
+		copy(entry.Data[offsetPos:newEndPos], newBytes[:])
 	}
-	entry.file.size = uint64(len(entry.data))
+	entry.Meta.size = uint64(len(entry.Data))
 
-	entry.file.modified = time.Now()
+	entry.Meta.modified = time.Now()
 	resp.Size = len(newBytes)
-	//log.Printf("write: added: %d, new total: %d", resp.Size, entry.file.size)
+	//log.Printf("write: added: %d, new total: %d", resp.Size, entry.Meta.size)
 
-	entry.fs.backendEvents.FileWritten<-EventFileWritten{}
+	entry.fs.backendEvents.FileWritten<-EventFileWritten{FSEvent{File: entry}}
 
 	return nil
 }
@@ -286,7 +328,7 @@ func (h Handle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	if !found {
 		return fuse.Errno(syscall.ENOENT)
 	}
-	entry.fs.backendEvents.FileClosed<-EventFileClosed{}
+	entry.fs.backendEvents.FileClosed<-EventFileClosed{FSEvent{File: entry}}
 
 	return nil
 }
@@ -314,10 +356,10 @@ func findEntryByInode(inode uint64) (*FileEntry, bool) {
 }
 
 type FileEntry struct {
-	fs *ramdiskFS
+	fs       *ramdiskFS
 	dirEntry fuse.Dirent
-	file     RamFile
-	data     []byte
+	Meta     RamFile
+	Data     []byte
 }
 
 func createFileEntry(name string, fs *ramdiskFS) (entry *FileEntry) {
@@ -326,8 +368,8 @@ func createFileEntry(name string, fs *ramdiskFS) (entry *FileEntry) {
 	entry = &FileEntry{
 		fs: fs,
 		dirEntry: fuse.Dirent{Inode:inode, Name: name, Type: fuse.DT_File},
-		file: RamFile{inode: inode, name: name, writable: true},
-		data: emptyContent,
+		Meta: RamFile{inode: inode, name: name, writable: true},
+		Data: emptyContent,
 	}
 	return
 }
