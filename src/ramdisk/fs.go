@@ -10,14 +10,93 @@ import (
 	"time"
 	"bazil.org/fuse/fuseutil"
 	"sync"
+	"runtime"
+	"log"
 )
 
 var atomicInode uint64 = 1
 
 func CreateRamFS() *ramdiskFS {
 	filesys := &ramdiskFS{
-		Events: NewFSEvents(),
+		backendEvents: NewFSEvents(),
+		addListenerChan: make(chan *FSEvents),
 	}
+
+	eventQueueMutex := sync.Mutex{}
+	eventQueue := make([]interface{}, 0)
+
+	// fetch backend events, and queue them. decoupling from listeners
+	go func(fsevents FSEvents) {
+		// TODO go routine termination
+		for {
+			var event interface{}
+			select {
+			case event = <-fsevents.FileCreated:
+			case event = <-fsevents.FileOpened:
+			case event = <-fsevents.FileRead:
+			case event = <-fsevents.FileWritten:
+			case event = <-fsevents.FileClosed:
+			case event = <-fsevents.Unmount:
+			}
+			_ = event
+			log.Printf("FS event received: %T", event)
+			eventQueueMutex.Lock()
+			eventQueue = append(eventQueue, event)
+			eventQueueMutex.Unlock()
+		}
+		return
+	} (filesys.backendEvents)
+
+	// propagate queued events to listeners
+	go func() {
+		// TODO go routine termination
+		listenerEvents := make([]*FSEvents, 0)
+
+		for {
+			select {
+			case newListener:=<-filesys.addListenerChan:
+				listenerEvents = append(listenerEvents, newListener)
+			default:
+				// fall through
+			}
+
+			var event interface{}
+
+			eventQueueMutex.Lock()
+			if len(eventQueue) > 0 {
+				event = eventQueue[0]
+				eventQueue = eventQueue[1:]
+			}
+			eventQueueMutex.Unlock()
+
+			if event != nil {
+				// this part relies on cooperation of listeners
+				for _, listener := range listenerEvents {
+					switch event.(type) {
+					case EventFileCreated:
+						log.Println("FS created event proc.")
+						listener.FileCreated <- event.(EventFileCreated)
+					case EventFileOpened:
+						listener.FileOpened <- event.(EventFileOpened)
+					case EventFileWritten:
+						listener.FileWritten <- event.(EventFileWritten)
+					case EventFileRead:
+						listener.FileRead <- event.(EventFileRead)
+					case EventFileClosed:
+						listener.FileClosed <- event.(EventFileClosed)
+					case bool:
+						listener.Unmount <- event.(bool)
+					default:
+						log.Panicf("unknown and unhandled FS event %T", event)
+					}
+				}
+			} else {
+				// be a good go citizen
+				runtime.Gosched()
+			}
+		}
+	}()
+
 	return filesys
 }
 
@@ -27,15 +106,20 @@ func nextInode() uint64 {
 
 // implements FSInodeGenerator
 type ramdiskFS struct {
-	Events FSEvents
+	backendEvents FSEvents
+	addListenerChan chan *FSEvents
 }
 
-func (f ramdiskFS) Root() (fs.Node, error) {
-	return &Dir{fs: &f}, nil
+func (f *ramdiskFS) Root() (fs.Node, error) {
+	return &Dir{fs: f}, nil
 }
 
-func (f ramdiskFS) GenerateInode(parentInode uint64, name string) uint64 {
+func (f *ramdiskFS) GenerateInode(parentInode uint64, name string) uint64 {
 	return nextInode()
+}
+
+func (f *ramdiskFS) AddListener(newListener *FSEvents) {
+	f.addListenerChan <- newListener
 }
 
 type Dir struct {
@@ -86,7 +170,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	handle := Handle{inode: newEntry.file.inode}
 
-	d.fs.Events.FileCreated<-EventFileCreated{FSEvent{File: newEntry}}
+	d.fs.backendEvents.FileCreated<-EventFileCreated{FSEvent{File: newEntry}}
 
 	return &newEntry.file, handle, nil
 }
@@ -128,7 +212,7 @@ func (f *RamFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.Op
 
 	handle := Handle{inode: f.inode}
 
-	entry.fs.Events.FileOpened<-EventFileOpened{FSEvent{File: entry}}
+	entry.fs.backendEvents.FileOpened<-EventFileOpened{FSEvent{File: entry}}
 
 	return handle, nil
 }
@@ -145,6 +229,8 @@ func (h Handle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Read
 	}
 
 	fuseutil.HandleRead(req, resp, entry.data)
+
+	entry.fs.backendEvents.FileRead <-EventFileRead{}
 
 	return nil
 }
@@ -188,7 +274,7 @@ func (h Handle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wr
 	resp.Size = len(newBytes)
 	//log.Printf("write: added: %d, new total: %d", resp.Size, entry.file.size)
 
-	entry.fs.Events.FileWritten<-EventFileWritten{}
+	entry.fs.backendEvents.FileWritten<-EventFileWritten{}
 
 	return nil
 }
@@ -200,7 +286,7 @@ func (h Handle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	if !found {
 		return fuse.Errno(syscall.ENOENT)
 	}
-	entry.fs.Events.FileClosed<-EventFileClosed{}
+	entry.fs.backendEvents.FileClosed<-EventFileClosed{}
 
 	return nil
 }
