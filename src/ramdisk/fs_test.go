@@ -21,11 +21,11 @@ func TestWriteOnce(t *testing.T) {
 	writtenBytes, writeErr:= writer.WriteString("testtesttest")
 	defer writer.Close()
 
-	if (mntErr != nil || createErr != nil || writeErr != nil) {
+	if mntErr != nil || createErr != nil || writeErr != nil {
 		t.Error("mount or create or write failed.")
 	}
 
-	if (writtenBytes != 12) {
+	if writtenBytes != 12 {
 		t.Error("not 12 bytes written")
 	}
 
@@ -50,12 +50,12 @@ func TestWriteMultiple(t *testing.T) {
 	defer writer.Close()
 
 	_, writeErr1 := writer.WriteString("testtesttest")
-	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil {
 		t.Fatal("first write failed")
 	}
 
 	writtenBytes, writeErr2 := writer.WriteString("aaaabbbb")
-	if (writeErr2 != nil) {
+	if writeErr2 != nil {
 		t.Fatal("second write failed")
 	}
 
@@ -83,7 +83,7 @@ func TestReadMultiwrite(t *testing.T) {
 	_, writeErr1 := writer.WriteString("testtesttest")
 	writtenBytes, writeErr2 := writer.WriteString("aaaabbbb")
 
-	if (mntErr != nil || createErr != nil || writeErr1 != nil || writeErr2 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil || writeErr2 != nil {
 		t.Fail()
 	}
 
@@ -111,7 +111,7 @@ func TestReadMultiwrite(t *testing.T) {
 		t.Fail()
 	}
 
-	if (writtenBytes != 8) {
+	if writtenBytes != 8 {
 		t.Fail()
 	}
 
@@ -201,7 +201,7 @@ func TestRandomSeek(t *testing.T) {
 
 	_, writeErr1 := writer.WriteString("testabatesttesttbabesttesttesttestcbctest")
 
-	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil {
 		t.Fail()
 	}
 
@@ -255,14 +255,14 @@ func TestRandomWrite(t *testing.T) {
 
 	_, writeErr1 := writer.WriteString("abcdefghijklmnopqrstuvwxyz")
 
-	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil {
 		t.Fail()
 	}
 
 	writer.Seek(7, 0)
 
 	_, writeErr2 := writer.WriteString("test")
-	if (writeErr2 != nil) {
+	if writeErr2 != nil {
 		t.Fail()
 	}
 
@@ -292,14 +292,14 @@ func TestOverwriteBeyondEnd(t *testing.T) {
 
 	_, writeErr1 := writer.WriteString("abcdefghijklmnopqrstuvwxyz")
 
-	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil {
 		t.Fail()
 	}
 
 	writer.Seek(-2, 2)
 
 	_, writeErr2 := writer.WriteString("test")
-	if (writeErr2 != nil) {
+	if writeErr2 != nil {
 		t.Fail()
 	}
 
@@ -337,14 +337,14 @@ func TestWriteAtPositionAfterEnd(t *testing.T) {
 
 	_, writeErr1 := writer.WriteString("abcdefghijklmnopqrstuvwxyz")
 
-	if (mntErr != nil || createErr != nil || writeErr1 != nil) {
+	if mntErr != nil || createErr != nil || writeErr1 != nil {
 		t.Fail()
 	}
 
 	writer.Seek(3, 2)
 
 	_, writeErr2 := writer.WriteString("test")
-	if (writeErr2 != nil) {
+	if writeErr2 != nil {
 		t.Fail()
 	}
 
