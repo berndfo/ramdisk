@@ -1,42 +1,51 @@
 # ramdisk
 RAM disk FUSE implementation in Go
 
-A alpha-stage RAM disk implemented in Go.
+An alpha-stage RAM disk implemented in Go.
 The RAM disk can be mounted as a Linux file system in user space (FUSE), needing no elevated privileges.
 Files can be created, read and written, but are not persisted to durable storage. Sufficient current must be flowing all the time.
 
 ## how to mount
 
+Mounting a RAM disk is very simple. Just prepare the mount point (here: `/mnt/myramdisk`)
+and run:
 ```go
+	ramdisk.MountAndServe("/mnt/myramdisk", nil)
+```
 
-mount("/mnt/myfs")
+A mounted RAM disk can be accessed like any other file system on Linux (cd, cp, echo, cat, etc.).
+No byte will ever hit any disk. All data is lost after terminating the process.
 
-func mount(mountpoint string) error {
-	c, err := fuse.Mount(mountpoint)
-	if err != nil {
-		log.Printf("failed to mount %q", mountpoint)
-		return err
-	}
-	log.Printf("successfully mounted %q", mountpoint)
+## how to track changes to FS
 
-	defer c.Close()
+to act on changes in the in-process RAM disk, you can listen on a number of channels:
 
-	filesys := ramdisk.CreateRamFS()
-	if err := fs.Serve(c, filesys); err != nil {
-		log.Printf("failed to serve  a filesystem at mount %q", mountpoint)
-		return err
-	}
+```go
+func main() {
 
-	// check if the mount process has an error to report
-	<-c.Ready
-	if err := c.MountError; err != nil {
-		log.Printf("failure mounting a filesystem at mount %q", mountpoint)
-		return err
-	}
+	fsevents := ramdisk.NewFSEvents()
 
-	return nil
+	go func() {
+		for {
+			var event interface{}
+			select {
+			case event = <-fsevents.FileCreated:
+				log.Printf("file create: %q", event.(ramdisk.EventFileCreated).File.Meta.Name())
+			case event = <-fsevents.FileOpened:
+			case event = <-fsevents.FileWritten:
+			case event = <-fsevents.FileClosed:
+				file := event.(ramdisk.EventFileClosed)
+				log.Printf("file closed: %q, size = %d", file.File.Meta.Name(), file.File.Meta.Size())
+			case event = <-fsevents.Unmount:
+			}
+		}
+	} ()
+
+	ramdisk.MountAndServe("/mnt/myramdisk", &fsevents)
 }
 ```
+
+in this example, every file creation and close operation is logged.
 
 ## how to unmount
 ```bash
@@ -51,4 +60,5 @@ or
 fuse.Unmount(mountpoint)
 ```
 
-TODO: how to track changes to FS
+
+    
