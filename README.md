@@ -65,15 +65,17 @@ fuse.Unmount(mountpoint)
 
 ## accessing file data in-process
 
-assume that latest is holding a recently written JPG image:
+assume that `latest` is holding a recently written JPG image:
 `var latest *ramdisk.FileEntry // last closed file entry`
 this file might have been written by `ffmpeg` or any another out-of-process application.
 a web request can directly render this image to the response by copying data
 
+```go
 func webHandler(response http.ResponseWriter, request *http.Request) {
     response.Header().Add("Content-type", "image/jpg")
     response.Write(latest.Data)
 }
+```
 
 for a running, detailed example see `src/ramdisk/webserver/main.go`
 
