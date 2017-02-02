@@ -55,8 +55,15 @@ var latestMutex sync.Mutex // safeguard access to latest
 
 var maskedImage *image.RGBA
 
+// main starts the sample application, which
+// * opens a webserver on port 8080
+// * mounts RAM disk at /mnt/myramdisk (this directory must have created in advance)
+// when creating new files there, for example by running
+//  ffmpeg -i MY_VIDEO.mp4  /mnt/myramdisk/%3d.jpg
+// the website http://localhost:8080/ will constantly render the latest picture.
 func main() {
 
+	// prepare some static data
 	maskedImage = image.NewRGBA(image.Rect(0, 0, 320, 200))
 	draw.Draw(maskedImage, maskedImage.Bounds(), &image.Uniform{image.White}, image.ZP, draw.Src)
 
@@ -68,6 +75,8 @@ func main() {
 		http.ListenAndServe("localhost:8080", http.HandlerFunc(webHandler))
 	} ()
 
+	// prepare receiving file change notifications
+	// here, a pointer the latest closed file is maintained
 	go func() {
 		for {
 			var event interface{}
@@ -91,7 +100,7 @@ func main() {
 	// mount ramdisk at "/mnt/fusemnt"
 	// you can now copy files to it, like "cp mypic.jpg /mnt/fusemnt
 	// it will appear as the
-	ramdisk.MountAndServe("/mnt/fusemnt", &fsevents)
+	ramdisk.MountAndServe("/mnt/myramdisk", &fsevents)
 }
 
 type circle struct {

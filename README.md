@@ -5,6 +5,8 @@ An alpha-stage RAM disk implemented in Go.
 The RAM disk can be mounted as a Linux file system in user space (FUSE), needing no elevated privileges.
 Files can be created, read and written, but are not persisted to durable storage. Sufficient current must be flowing all the time.
 
+The Go process creating the RAM disk has direct in-process access to file data, represented by a byte slice.
+
 ## how to mount
 
 Mounting a RAM disk is very simple. Just prepare the mount point (here: `/mnt/myramdisk`)
@@ -46,6 +48,7 @@ func main() {
 ```
 
 in this example, every file creation and close operation is logged.
+Please make sure to listen on all channels, but feel free to ignore any event you're not interested in.
 
 ## how to unmount
 ```bash
@@ -59,6 +62,20 @@ or
 // in Go code
 fuse.Unmount(mountpoint)
 ```
+
+## accessing file data in-process
+
+assume that latest is holding a recently written JPG image:
+`var latest *ramdisk.FileEntry // last closed file entry`
+this file might have been written by `ffmpeg` or any another out-of-process application.
+a web request can directly render this image to the response by copying data
+
+func webHandler(response http.ResponseWriter, request *http.Request) {
+    response.Header().Add("Content-type", "image/jpg")
+    response.Write(latest.Data)
+}
+
+for a running, detailed example see `src/ramdisk/webserver/main.go`
 
 
     
