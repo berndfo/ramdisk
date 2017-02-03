@@ -25,6 +25,6 @@ func main() {
 		}
 	} ()
 
-	ramdisk.MountAndServe("/mnt/fusemnt", &fsevents)
+	ramdisk.MountAndServe("/mnt/myramdisk", &fsevents)
 }
 

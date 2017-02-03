@@ -1,11 +1,23 @@
 # ramdisk
-RAM disk FUSE implementation in Go
+a RAM disk written in Go. a RAM disk is a file system where data is held only in RAM.
 
 An alpha-stage RAM disk implemented in Go.
 The RAM disk can be mounted as a Linux file system in user space (FUSE), needing no elevated privileges.
 Files can be created, read and written, but are not persisted to durable storage. Sufficient current must be flowing all the time.
 
 The Go process creating the RAM disk has direct in-process access to file data, represented by a byte slice.
+
+## prepare
+
+```bash
+ git clone https://github.com/berndfo/ramdisk.git
+ cd ramdisk
+ export GOPATH=`pwd` # use backticks here!
+ go get bazil.org/fuse
+ go get golang.org/x/net
+ 
+ go run src/main.go
+```
 
 ## how to mount
 
