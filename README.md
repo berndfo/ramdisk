@@ -91,5 +91,9 @@ func webHandler(response http.ResponseWriter, request *http.Request) {
 
 for a running, detailed example see `src/ramdisk/webserver/main.go`
 
+## missing features
+
+-[ ] deletion of files
+-[ ] support directory structure
 
     
